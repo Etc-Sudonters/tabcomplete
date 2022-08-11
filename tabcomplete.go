@@ -61,6 +61,7 @@ type tabDisplay struct {
 
 // TODO(ANR): Do we need to also tag the state w/ an Id?
 type tabCompleteState struct {
+	initial         string
 	candidates      []string
 	displayView     []string
 	candidateCursor int
@@ -177,6 +178,10 @@ func (m *Model) Blur() {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// we're not active
+	if !m.focus {
+		return m, nil
+	}
 	switch msg := msg.(type) {
 	case Message:
 		// not us
@@ -194,12 +199,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = nil
 			return m, nil
 		case tea.KeyTab.String():
+			curVal := m.input.Value()
 			return m, func() tea.Msg {
 				return Message{
-					kind: started{m.input.Value()},
+					kind: started{curVal},
 					id:   m.id,
 				}
 			}
+		case tea.KeyShiftTab.String():
+			if m.state != nil {
+				m.state.movePrev()
+			}
+			return m, nil
 		case tea.KeyLeft.String():
 			if m.state != nil {
 				m.state.movePrev()
@@ -213,11 +224,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter.String():
 			if m.state != nil {
 				selectedVal := m.state.selectCurrent()
+				curVal := m.input.Value()
 				return m, func() tea.Msg {
 					return Message{
 						id: m.id,
 						kind: selected{
-							current:  m.input.Value(),
+							current:  curVal,
 							selected: selectedVal,
 						},
 					}
@@ -226,21 +238,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	return m, m.updateInput(msg)
-}
+	curVal := m.input.Value()
+	newInput, cmd := m.input.Update(msg)
+	if newInput.Value() != curVal {
+		cmd = tea.Batch(cmd, func() tea.Msg {
+			return Message{
+				id:   m.id,
+				kind: canceled{},
+			}
+		})
+	}
+	m.input = newInput
 
-func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
-	var cmd tea.Cmd
-
-	m.input, cmd = m.input.Update(msg)
-
-	return cmd
+	return m, cmd
 }
 
 func (m *Model) handleTabMessage(msg Message) tea.Cmd {
 	switch msg := msg.kind.(type) {
 	case started:
-		m.state = nil
+		if m.state != nil {
+			m.state.moveNext()
+			return nil
+		}
 		return func() tea.Msg {
 			candidates := m.tabCompletion.Complete(msg.input)
 			return Message{
@@ -260,16 +279,27 @@ func (m *Model) handleTabMessage(msg Message) tea.Cmd {
 		ranked := m.tabCompletion.Rank(msg.input, msg.candidates)
 
 		m.state = &tabCompleteState{
+			initial:         msg.input,
 			candidates:      ranked,
 			candidateCursor: 0,
 			displayCursor:   0,
 		}
 		m.state.createDisplayList(m.maxCandidatesToDisplay)
+		return nil
 
 	case selected:
+		// probably canceled
+		if m.state == nil {
+			return nil
+		}
 		joined := m.tabCompletion.Join(msg.current, msg.selected)
 		m.input.SetValue(joined)
+		m.input.SetCursor(len(m.input.Value()))
 		m.state = nil
+		return nil
+	case canceled:
+		m.state = nil
+		return nil
 	}
 
 	return nil
@@ -312,3 +342,5 @@ type selected struct {
 	selected string
 	current  string
 }
+
+type canceled struct{}

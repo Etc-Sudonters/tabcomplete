@@ -1,4 +1,4 @@
-package examples
+package main
 
 import (
 	"log"
@@ -42,6 +42,14 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case tea.KeyCtrlC.String():
+			return m, tea.Quit
+		}
+	}
+
 	model, cmd := m.tc.Update(msg)
 	m.tc = model.(tabcomplete.Model)
 	return m, cmd
@@ -64,6 +72,7 @@ func main() {
 			m.Prompt = "Start typing: "
 		},
 	})
+	tc.Focus()
 	if err != nil {
 		log.Fatal(err)
 	}
