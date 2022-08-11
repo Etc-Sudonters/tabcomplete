@@ -23,7 +23,7 @@ func nextID() int {
 }
 
 type TabCompletion interface {
-	Complete(string) []string
+	Complete(string) ([]string, error)
 	Rank(string, []string) []string
 	Join(string, string) string
 }
@@ -40,6 +40,11 @@ type TabCompleterOptions struct {
 	ConfigureTextInput     func(*textinput.Model)
 }
 
+type TabError struct {
+	Input string
+	Err   error
+}
+
 type Model struct {
 	tabCompletion          TabCompletion
 	maxCandidatesToDisplay int
@@ -48,6 +53,7 @@ type Model struct {
 	input                  textinput.Model
 	id                     int
 	focus                  bool
+	Error                  *TabError
 }
 
 type tabDisplay struct {
@@ -86,8 +92,8 @@ func (s *tabCompleteState) moveNext() {
 	s.displayCursor++
 
 	// rolled off edge, but we know there's at least one more element after
-	if s.displayCursor == len(s.displayView) {
-		s.displayCursor--
+	if s.displayCursor >= len(s.displayView) {
+		s.displayCursor = len(s.displayView) - 1
 		s.displayView = append(
 			s.displayView[1:],
 			s.candidates[s.candidateCursor],
@@ -255,13 +261,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) handleTabMessage(msg Message) tea.Cmd {
 	switch msg := msg.kind.(type) {
+	case tabErr:
+		m.state = nil
+		m.Error = &TabError{
+			Input: msg.input,
+			Err:   msg.err,
+		}
+		return nil
 	case started:
 		if m.state != nil {
 			m.state.moveNext()
 			return nil
 		}
+		m.Error = nil
 		return func() tea.Msg {
-			candidates := m.tabCompletion.Complete(msg.input)
+			candidates, err := m.tabCompletion.Complete(msg.input)
+
+			if err != nil {
+				return Message{
+					id: m.id,
+					kind: tabErr{
+						input: msg.input,
+						err:   err,
+					},
+				}
+			}
+
 			return Message{
 				id: m.id,
 				kind: completed{
@@ -299,6 +324,7 @@ func (m *Model) handleTabMessage(msg Message) tea.Cmd {
 		return nil
 	case canceled:
 		m.state = nil
+		m.Error = nil
 		return nil
 	}
 
@@ -344,3 +370,8 @@ type selected struct {
 }
 
 type canceled struct{}
+
+type tabErr struct {
+	input string
+	err   error
+}
