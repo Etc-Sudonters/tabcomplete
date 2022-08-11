@@ -1,11 +1,14 @@
-module github.com/etc-sudonters/tabcomplete
+module examples
 
 go 1.18
+
+replace github.com/etc-sudonters/tabcomplete => ../
 
 require (
 	github.com/charmbracelet/bubbles v0.13.0
 	github.com/charmbracelet/bubbletea v0.22.0
 	github.com/charmbracelet/lipgloss v0.5.0
+	github.com/etc-sudonters/tabcomplete v0.0.0-00010101000000-000000000000
 )
 
 require (
