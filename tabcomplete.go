@@ -2,6 +2,7 @@ package tabcomplete
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -84,7 +85,7 @@ func (s *tabCompleteState) createDisplayList(maxCandidatesToDisplay int) {
 }
 
 func (s *tabCompleteState) moveNext() {
-	if s.candidateCursor == len(s.candidates)-1 {
+	if s.candidateCursor >= len(s.candidates)-1 {
 		return
 	}
 
@@ -118,6 +119,9 @@ func (s *tabCompleteState) movePrev() {
 	}
 }
 func (s *tabCompleteState) selectCurrent() string {
+	if len(s.candidates) == 0 {
+		panic(fmt.Sprintf("TabState was present with initial of %s but no candidates (how?)", s.initial))
+	}
 	return s.candidates[s.candidateCursor]
 }
 
@@ -298,6 +302,11 @@ func (m *Model) handleTabMessage(msg Message) tea.Cmd {
 
 	case completed:
 		if len(msg.candidates) == 0 {
+			m.state = nil
+			m.Error = &TabError{
+				Input: msg.input,
+				Err:   errors.New("no candidates found"),
+			}
 			return nil
 		}
 
@@ -317,6 +326,7 @@ func (m *Model) handleTabMessage(msg Message) tea.Cmd {
 		if m.state == nil {
 			return nil
 		}
+
 		joined := m.tabCompletion.Join(msg.current, msg.selected)
 		m.input.SetValue(joined)
 		m.input.SetCursor(len(m.input.Value()))

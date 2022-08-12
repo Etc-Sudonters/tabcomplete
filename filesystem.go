@@ -1,12 +1,14 @@
 package tabcomplete
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	homedir "github.com/mitchellh/go-homedir"
+	"github.com/mitchellh/go-homedir"
 	"github.com/sahilm/fuzzy"
 )
 
@@ -21,109 +23,112 @@ func NewFileSystemTabCompletion() FileSystemTabCompletion {
 	}
 }
 
+func mapf[A, B any](as []A, f func(A) B) []B {
+	bees := make([]B, len(as))
+
+	for i := range as {
+		bees[i] = f(as[i])
+	}
+
+	return bees
+}
+
 func (fs FileSystemTabCompletion) Complete(input string) (candidates []string, err error) {
-	if len(input) == 0 {
+	if input == "" {
+		err = errors.New("no input")
 		return
 	}
 
-	var path string
-	var pathExists bool
-	if input[0] == byte('~') {
+	var info os.FileInfo
+	path := input
 
-		path, err = homedir.Expand(input)
-
-		if err != nil {
-			return
-		}
-	}
-
-	if !filepath.IsAbs(path) {
-		path, err = filepath.Abs(path)
-		if err != nil {
-			return
-		}
-	}
-
-	pathExists, err = checkIfExists(path)
-
+	path, err = expandAsMuchAsPossible(path, fs.pathSep)
 	if err != nil {
-		// TODO(ANR): should figure out what else could pop out
-		// this is fine for now
+
+		if !os.IsNotExist(err) {
+			return
+		}
+
+		path = filepath.Dir(path)
+		_, err = os.Stat(path)
+		if err != nil {
+			path = ""
+			return
+		}
+	}
+
+	info, err = os.Stat(path)
+
+	// this shouldn't happen unless the path is deleted after we do expansion
+	if err != nil {
 		return
 	}
 
-	if !pathExists {
-		path, _ = normalizePath(path, fs.pathSep)
-		pathExists, err = checkIfExists(path)
-		if err != nil {
-			return
-		}
-		if !pathExists {
-			err = os.ErrNotExist
-			return
-		}
+	if !info.IsDir() {
+		err = errors.New("not a directory to complete")
+		candidates = []string{}
+		return
 	}
 
 	entries, err := os.ReadDir(path)
-
 	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "not a directory") {
-			candidates = []string{}
-			err = nil
-		}
 		return
 	}
 
-	candidates = make([]string, 0, len(entries))
+	candidates = make([]string, len(entries))
 
-	for _, entry := range entries {
-		name := entry.Name()
-
-		if name == "" {
-			continue
-		}
-
-		if !fs.IncludeHidden && name[0] == byte('.') {
-			continue
-		}
-
+	for i, entry := range entries {
 		if entry.IsDir() {
-			candidates = append(candidates, name+fs.pathSep)
+			candidates[i] = entry.Name() + fs.pathSep
 		} else {
-			candidates = append(candidates, name)
+			candidates[i] = entry.Name()
 		}
-
 	}
+
+	err = nil
 	return
 }
 
-func (fs FileSystemTabCompletion) Rank(input string, candidates []string) (rankedCandidates []string) {
-	_, trailer := normalizePath(input, fs.pathSep)
-	if trailer == "" {
-		rankedCandidates = candidates
-		return
+func expandAsMuchAsPossible(input, pathSep string) (path string, err error) {
+	path = input
+
+	if string(input[0]) == "~" {
+		path, err = homedir.Expand(input)
+		if err != nil {
+			err = fmt.Errorf("bad expansion %w", err)
+			return
+		}
 	}
 
-	matches := fuzzy.Find(trailer, candidates)
+	_, err = os.Stat(path)
+	return
+}
+
+func (fs FileSystemTabCompletion) Rank(input string, candidates []string) []string {
+	if _, err := expandAsMuchAsPossible(input, fs.pathSep); err == nil {
+		return candidates
+	}
+
+	input = filepath.Base(input)
+	matches := fuzzy.Find(input, candidates)
 	sort.Stable(matches)
 
-	rankedCandidates = make([]string, len(candidates))
-
-	for i, match := range matches {
-		rankedCandidates[i] = match.Str
-	}
-
-	return
+	return mapf(matches, func(m fuzzy.Match) string { return m.Str })
 }
 
 func (fs FileSystemTabCompletion) Join(current, selected string) string {
-	path := filepath.Dir(current)
-	expanded, err := filepath.Abs(path)
-	if err != nil {
-		expanded = path
+	if _, err := os.Stat(current); err != nil {
+		current = filepath.Dir(current)
 	}
-	return filepath.Join(expanded, selected)
+
+	joined := filepath.Join(current, selected)
+
+	// re attach directory marker if necessary
+	if strings.HasSuffix(selected, fs.pathSep) {
+		joined += fs.pathSep
+	}
+
+	return joined
 }
 
 func normalizePath(input, sep string) (path, trailer string) {
@@ -133,18 +138,5 @@ func normalizePath(input, sep string) (path, trailer string) {
 	}
 
 	path, trailer = filepath.Dir(input), filepath.Base(input)
-	return
-}
-
-func checkIfExists(path string) (exists bool, err error) {
-	_, err = os.Stat(path)
-	if err == nil {
-		exists = true
-	} else if os.IsNotExist(err) {
-		exists = false
-		err = nil
-	} else {
-		exists = false
-	}
 	return
 }
