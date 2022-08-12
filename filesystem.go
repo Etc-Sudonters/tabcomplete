@@ -12,6 +12,10 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
+func UseFileSystemCompleter() ConfigureModel {
+	return UseCompleter(NewFileSystemTabCompletion())
+}
+
 type FileSystemTabCompletion struct {
 	pathSep       string
 	IncludeHidden bool
@@ -35,6 +39,8 @@ func mapf[A, B any](as []A, f func(A) B) []B {
 
 func (fs FileSystemTabCompletion) Complete(input string) (candidates []string, err error) {
 	if input == "" {
+		//TODO(ANR): set to "." -- this causes a panic in Rank's
+		//expandAsMuchAsPossible call though
 		err = errors.New("no input")
 		return
 	}

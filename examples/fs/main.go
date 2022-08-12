@@ -49,18 +49,17 @@ func (m model) View() string {
 }
 
 func main() {
-	tc, err := tabcomplete.NewTabCompleter(tabcomplete.TabCompleterOptions{
-		TabCompletion:          tabcomplete.NewFileSystemTabCompletion(),
-		MaxCandidatesToDisplay: 10,
-		Separator:              " ",
-		TabFocusStyle:          lipgloss.NewStyle().Background(lipgloss.Color("#8250df")),
-		TabBlurStyle:           lipgloss.NewStyle(),
-		InputFocusStyle:        lipgloss.NewStyle().Foreground(lipgloss.Color("#8250df")),
-		InputBlurStyle:         lipgloss.NewStyle(),
-		ConfigureTextInput: func(m *textinput.Model) {
-			m.Prompt = "Start typing: "
-		},
-	})
+	tc, err := tabcomplete.NewTabCompleter(
+		tabcomplete.AlwaysRenderTabLine(),
+		tabcomplete.UseFileSystemCompleter(),
+		tabcomplete.MaxCandidatesToDisplay(10),
+		tabcomplete.WithSeparator(" | "),
+		tabcomplete.BlurredStyle(lipgloss.NewStyle()),
+		tabcomplete.FocusedStyle(lipgloss.NewStyle().Background(lipgloss.Color("#8250df"))),
+		tabcomplete.ConfigureTextInput(func(m *textinput.Model) {
+			m.Prompt = "Start Typing: "
+		}),
+	)
 	tc.Focus()
 	if err != nil {
 		log.Fatal(err)
