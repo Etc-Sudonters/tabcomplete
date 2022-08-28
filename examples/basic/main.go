@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,7 +12,7 @@ import (
 
 type testcompleter struct{}
 
-func (ttc testcompleter) Complete(string) []string {
+func (ttc testcompleter) Complete(string) ([]string, error) {
 	return []string{
 		"The Million Violation",
 		"Kenosis",
@@ -22,11 +23,7 @@ func (ttc testcompleter) Complete(string) []string {
 		"Casting Of The Self",
 		"All That Was Promised",
 		"Name Them Yet Build No Monument",
-	}
-}
-
-func (ttc testcompleter) Rank(_ string, candidates []string) []string {
-	return candidates
+	}, nil
 }
 
 func (ttc testcompleter) Join(cur, selected string) string {
@@ -34,11 +31,12 @@ func (ttc testcompleter) Join(cur, selected string) string {
 }
 
 type model struct {
-	tc tabcomplete.Model
+	tc    tabcomplete.Model
+	input textinput.Model
 }
 
 func (m model) Init() tea.Cmd {
-	return m.tc.Focus()
+	return m.input.Focus()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -47,37 +45,62 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case tea.KeyCtrlC.String():
 			return m, tea.Quit
+		case tea.KeyTab.String():
+			if m.tc.HasCandidates() {
+				return m, m.tc.MoveNext()
+			}
+			return m, m.tc.Complete(m.input.Value())
+		case tea.KeyShiftTab.String():
+			if m.tc.HasCandidates() {
+				return m, m.tc.MovePrev()
+			}
+		case tea.KeyEnter.String():
+			if m.tc.HasCandidates() {
+				candidate, cmd, err := m.tc.SelectCurrent()
+				if err != nil {
+					return m, nil
+				}
+
+				m.input.SetValue(m.tc.JoinCandidate(m.input.Value(), candidate))
+				return m, cmd
+			}
 		}
+	case tabcomplete.Message:
+		model, cmd := m.tc.Update(msg)
+		m.tc = model
+		return m, cmd
 	}
 
-	model, cmd := m.tc.Update(msg)
-	m.tc = model.(tabcomplete.Model)
+	model, cmd := m.input.Update(msg)
+	m.input = model
 	return m, cmd
 }
 
 func (m model) View() string {
-	return m.tc.View()
+	viewBuilder := strings.Builder{}
+	viewBuilder.WriteString(m.input.View())
+	if m.tc.HasCandidates() {
+		viewBuilder.WriteString("\n")
+		viewBuilder.WriteString(m.tc.View())
+	}
+
+	return viewBuilder.String()
 }
 
 func main() {
-	tc, err := tabcomplete.NewTabCompleter(tabcomplete.TabCompleterOptions{
-		TabCompletion:          testcompleter{},
-		MaxCandidatesToDisplay: 3,
-		Separator:              " ",
-		TabFocusStyle:          lipgloss.NewStyle().Background(lipgloss.Color("#8250df")),
-		TabBlurStyle:           lipgloss.NewStyle(),
-		InputFocusStyle:        lipgloss.NewStyle().Foreground(lipgloss.Color("#8250df")),
-		InputBlurStyle:         lipgloss.NewStyle(),
-		ConfigureTextInput: func(m *textinput.Model) {
-			m.Prompt = "Start typing: "
-		},
-	})
-	tc.Focus()
-	if err != nil {
-		log.Fatal(err)
-	}
-	p := tea.NewProgram(model{tc})
-	if err = p.Start(); err != nil {
+	tc, _ := tabcomplete.NewTabCompleter(
+		tabcomplete.UseCompleter(&testcompleter{}),
+		tabcomplete.MaxCandidatesToDisplay(3),
+		tabcomplete.BlurredStyle(lipgloss.NewStyle()),
+		tabcomplete.FocusedStyle(
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#B95FF4")),
+		),
+	)
+	input := textinput.New()
+	input.Prompt = "Enter some text "
+	input.Focus()
+	p := tea.NewProgram(model{tc, input})
+	if err := p.Start(); err != nil {
 		log.Fatal(err)
 	}
 }

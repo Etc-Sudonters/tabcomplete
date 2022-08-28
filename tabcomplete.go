@@ -6,7 +6,6 @@ import (
 
 type TabCompletion interface {
 	Complete(string) ([]string, error)
-	Rank(string, []string) []string
 	Join(string, string) string
 }
 
@@ -22,6 +21,16 @@ type tabCompleteState struct {
 	displayView     []string
 	candidateCursor int
 	displayCursor   int
+}
+
+func newTabState(maxCandidatesToDisplay int, initial string, candidates []string) *tabCompleteState {
+	ts := &tabCompleteState{
+		initial:    initial,
+		candidates: candidates,
+	}
+
+	ts.createDisplayList(maxCandidatesToDisplay)
+	return ts
 }
 
 func (s *tabCompleteState) createDisplayList(maxCandidatesToDisplay int) {
@@ -50,6 +59,7 @@ func (s *tabCompleteState) moveNext() {
 		)
 	}
 }
+
 func (s *tabCompleteState) movePrev() {
 	if s.candidateCursor == 0 {
 		return
@@ -67,6 +77,7 @@ func (s *tabCompleteState) movePrev() {
 		)
 	}
 }
+
 func (s *tabCompleteState) selectCurrent() string {
 	if len(s.candidates) == 0 {
 		panic(fmt.Sprintf("TabState was present with initial of %s but no candidates (how?)", s.initial))

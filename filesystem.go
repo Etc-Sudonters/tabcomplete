@@ -91,6 +91,12 @@ func (fs FileSystemTabCompletion) Complete(input string) (candidates []string, e
 		}
 	}
 
+	base := filepath.Base(input)
+	matches := fuzzy.Find(base, candidates)
+	sort.Stable(matches)
+
+	candidates = mapf(matches, func(m fuzzy.Match) string { return m.Str })
+
 	err = nil
 	return
 }
@@ -110,18 +116,6 @@ func expandAsMuchAsPossible(input, pathSep string) (path string, err error) {
 	return
 }
 
-func (fs FileSystemTabCompletion) Rank(input string, candidates []string) []string {
-	if _, err := expandAsMuchAsPossible(input, fs.pathSep); err == nil {
-		return candidates
-	}
-
-	input = filepath.Base(input)
-	matches := fuzzy.Find(input, candidates)
-	sort.Stable(matches)
-
-	return mapf(matches, func(m fuzzy.Match) string { return m.Str })
-}
-
 func (fs FileSystemTabCompletion) Join(current, selected string) string {
 	if _, err := os.Stat(current); err != nil {
 		current = filepath.Dir(current)
@@ -135,14 +129,4 @@ func (fs FileSystemTabCompletion) Join(current, selected string) string {
 	}
 
 	return joined
-}
-
-func normalizePath(input, sep string) (path, trailer string) {
-	if strings.HasSuffix(input, sep) {
-		path = input
-		return
-	}
-
-	path, trailer = filepath.Dir(input), filepath.Base(input)
-	return
 }
