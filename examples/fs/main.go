@@ -45,8 +45,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				m.input.SetValue(m.tc.JoinCandidate(m.input.Value(), candidate))
+				m.input.CursorEnd()
 				return m, cmd
 			}
+		case tea.KeyEsc.String():
+			return m, m.tc.Clear()
 		}
 	case tabcomplete.Message:
 		model, cmd := m.tc.Update(msg)
@@ -54,7 +57,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	existingValue := m.input.Value()
 	model, cmd := m.input.Update(msg)
+	newValue := model.Value()
+
+	if model.Value() != existingValue && m.tc.HasCandidates() {
+		cmd = tea.Batch(cmd, m.tc.Complete(newValue))
+	}
+
 	m.input = model
 	return m, cmd
 }
@@ -76,7 +86,7 @@ func (m model) View() string {
 
 func main() {
 	tc, err := tabcomplete.NewTabCompleter(
-		tabcomplete.UseFileSystemCompleter(),
+		tabcomplete.UseFileSystemCompleter(tabcomplete.IncludeHiddenFiles),
 		tabcomplete.MaxCandidatesToDisplay(10),
 		tabcomplete.WithSeparator(" | ", lipgloss.NewStyle()),
 		tabcomplete.BlurredStyle(lipgloss.NewStyle()),

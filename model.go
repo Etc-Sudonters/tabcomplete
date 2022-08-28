@@ -100,24 +100,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	viewBuilder := strings.Builder{}
+	view := ""
 
 	if m.state != nil && len(m.state.candidates) > 0 {
-		numDisplayedCandidates := len(m.state.displayView)
+		displayedCandidates := make([]string, len(m.state.displayView))
 		for i, candidate := range m.state.displayView {
 			if i == m.state.displayCursor {
-				viewBuilder.WriteString(m.display.tabFocusStyle.Render(candidate))
+				displayedCandidates[i] = m.display.tabFocusStyle.Render(candidate)
 			} else {
-				viewBuilder.WriteString(m.display.tabBlurStyle.Render(candidate))
-			}
-
-			if i+1 <= numDisplayedCandidates {
-				viewBuilder.WriteString(m.display.separatorStyle.Render(m.display.separator))
+				displayedCandidates[i] = m.display.tabBlurStyle.Render(candidate)
 			}
 		}
+
+		view = strings.Join(displayedCandidates, m.display.separatorStyle.Render(m.display.separator))
 	}
 
-	return viewBuilder.String()
+	return view
 }
 
 func (m Model) Complete(input string) tea.Cmd {

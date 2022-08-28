@@ -45,6 +45,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case tea.KeyCtrlC.String():
 			return m, tea.Quit
+		case tea.KeyEsc.String():
+			return m, m.tc.Clear()
 		case tea.KeyTab.String():
 			if m.tc.HasCandidates() {
 				return m, m.tc.MoveNext()

@@ -12,8 +12,15 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-func UseFileSystemCompleter() ConfigureModel {
-	return UseCompleter(NewFileSystemTabCompletion())
+type IncludeHidden bool
+
+const (
+	IncludeHiddenFiles IncludeHidden = true
+	ExcludeHiddenFiles IncludeHidden = false
+)
+
+func UseFileSystemCompleter(includeHidden IncludeHidden) ConfigureModel {
+	return UseCompleter(NewFileSystemTabCompletion(bool(includeHidden)))
 }
 
 type FileSystemTabCompletion struct {
@@ -21,9 +28,10 @@ type FileSystemTabCompletion struct {
 	IncludeHidden bool
 }
 
-func NewFileSystemTabCompletion() FileSystemTabCompletion {
+func NewFileSystemTabCompletion(includeHidden bool) FileSystemTabCompletion {
 	return FileSystemTabCompletion{
-		pathSep: string(os.PathSeparator),
+		pathSep:       string(os.PathSeparator),
+		IncludeHidden: includeHidden,
 	}
 }
 
@@ -37,71 +45,106 @@ func mapf[A, B any](as []A, f func(A) B) []B {
 	return bees
 }
 
-func (fs FileSystemTabCompletion) Complete(input string) (candidates []string, err error) {
-	if input == "" {
-		//TODO(ANR): set to "." -- this causes a panic in Rank's
-		//expandAsMuchAsPossible call though
-		err = errors.New("no input")
-		return
-	}
+func (fs FileSystemTabCompletion) Complete(input string) ([]string, error) {
+	var err error
+	var path string = input
 
-	var info os.FileInfo
-	path := input
-
-	path, err = expandAsMuchAsPossible(path, fs.pathSep)
-	if err != nil {
-
-		if !os.IsNotExist(err) {
-			return
-		}
-
-		path = filepath.Dir(path)
-		_, err = os.Stat(path)
+	if path == "" {
+		path, err = os.Getwd()
 		if err != nil {
-			path = ""
-			return
+			return []string{}, err
 		}
 	}
 
-	info, err = os.Stat(path)
-
-	// this shouldn't happen unless the path is deleted after we do expansion
+	absPath, err := expandPath(path)
 	if err != nil {
-		return
+		return []string{}, fmt.Errorf("could not expand %s: %w", path, err)
 	}
 
-	if !info.IsDir() {
-		err = errors.New("not a directory to complete")
-		candidates = []string{}
-		return
-	}
+	dir, base, err := normalize(absPath)
 
-	entries, err := os.ReadDir(path)
 	if err != nil {
-		return
+		return []string{}, fmt.Errorf("could not normalize %s: %w", absPath, err)
 	}
 
-	candidates = make([]string, len(entries))
+	entries, err := os.ReadDir(dir)
 
-	for i, entry := range entries {
-		if entry.IsDir() {
-			candidates[i] = entry.Name() + fs.pathSep
-		} else {
-			candidates[i] = entry.Name()
+	if err != nil {
+		return []string{}, fmt.Errorf("could not read %s: %w", dir, err)
+	}
+
+	candidates := mapf(entries, func(d os.DirEntry) string {
+		name := d.Name()
+
+		if d.IsDir() && !strings.HasSuffix(name, fs.pathSep) {
+			return name + fs.pathSep
 		}
+
+		return name
+	})
+
+	if base != "" {
+		matches := fuzzy.Find(base, candidates)
+		sort.Stable(matches)
+		candidates = mapf(matches, func(m fuzzy.Match) string {
+			return m.Str
+		})
 	}
 
-	base := filepath.Base(input)
-	matches := fuzzy.Find(base, candidates)
-	sort.Stable(matches)
-
-	candidates = mapf(matches, func(m fuzzy.Match) string { return m.Str })
-
-	err = nil
-	return
+	return candidates, nil
 }
 
-func expandAsMuchAsPossible(input, pathSep string) (path string, err error) {
+func (fs FileSystemTabCompletion) Join(current, selected string) string {
+	if current == "" {
+		info, err := os.Stat(selected)
+		if err == nil && info.IsDir() {
+			return selected + fs.pathSep
+		}
+		return selected
+	}
+
+	expanded, err := expandPath(current)
+
+	if err != nil {
+		return filepath.Join(current, selected)
+	}
+
+	dir, _, err := normalize(expanded)
+
+	if err == nil {
+		current = dir
+	}
+
+	return filepath.Join(current, selected)
+}
+
+func normalize(path string) (string, string, error) {
+	info, err := os.Stat(path)
+
+	if err == nil {
+		if !info.IsDir() {
+			return filepath.Dir(path), filepath.Base(path), nil
+		}
+
+		return path, "", nil
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", "", fmt.Errorf("could not stat %s: %w", path, err)
+	}
+
+	dir, base := filepath.Split(path)
+
+	_, err = os.Stat(dir)
+
+	if err != nil {
+		return "", "", fmt.Errorf("could not stat %s: %w", dir, err)
+	}
+
+	return dir, base, nil
+}
+
+func expandPath(input string) (path string, err error) {
 	path = input
 
 	if string(input[0]) == "~" {
@@ -112,21 +155,12 @@ func expandAsMuchAsPossible(input, pathSep string) (path string, err error) {
 		}
 	}
 
-	_, err = os.Stat(path)
+	if !filepath.IsAbs(path) {
+		path, err = filepath.Abs(path)
+		if err != nil {
+			err = fmt.Errorf("bad expansion %w", err)
+		}
+	}
+
 	return
-}
-
-func (fs FileSystemTabCompletion) Join(current, selected string) string {
-	if _, err := os.Stat(current); err != nil {
-		current = filepath.Dir(current)
-	}
-
-	joined := filepath.Join(current, selected)
-
-	// re attach directory marker if necessary
-	if strings.HasSuffix(selected, fs.pathSep) {
-		joined += fs.pathSep
-	}
-
-	return joined
 }
