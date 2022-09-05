@@ -34,7 +34,7 @@ type Model struct {
 	tabCompletion          TabCompletion
 	maxCandidatesToDisplay int
 	display                *tabDisplay
-	state                  *tabCompleteState
+	state                  CandidateNavigator
 	id                     int
 	Error                  *TabError
 }
@@ -76,7 +76,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.state = nil
 			m.Error = nil
 		case completed:
-			m.state = newTabState(m.maxCandidatesToDisplay, msg.candidates)
+			m.state = newPagedCandidateNavigator(m.maxCandidatesToDisplay, msg.candidates)
 			m.Error = nil
 		case tabErr:
 			m.state = nil
@@ -86,11 +86,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		case moveNext:
 			if m.state != nil {
-				m.state.moveNext()
+				m.state.MoveCursorNext()
 			}
 		case movePrev:
 			if m.state != nil {
-				m.state.movePrev()
+				m.state.MoveCursorPrev()
 			}
 		}
 	}
@@ -101,13 +101,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 func (m Model) View() string {
 	view := ""
 
-	if m.state != nil && len(m.state.candidates) > 0 {
-		displayedCandidates := make([]string, len(m.state.displayView))
-		for i, candidate := range m.state.displayView {
-			if i == m.state.displayCursor {
-				displayedCandidates[i] = m.display.tabFocusStyle.Render(candidate)
+	if m.state != nil {
+		currentCandidates := m.state.CurrentDisplay()
+		displayedCandidates := make([]string, len(currentCandidates))
+		for i, candidate := range currentCandidates {
+			if candidate.Current() {
+				displayedCandidates[i] = m.display.tabFocusStyle.Render(candidate.String())
 			} else {
-				displayedCandidates[i] = m.display.tabBlurStyle.Render(candidate)
+				displayedCandidates[i] = m.display.tabBlurStyle.Render(candidate.String())
 			}
 		}
 
@@ -171,7 +172,7 @@ func (m Model) MovePrev() tea.Cmd {
 }
 
 func (m Model) SelectCurrent() (string, tea.Cmd, error) {
-	if m.state == nil || len(m.state.candidates) == 0 {
+	if m.state == nil {
 		return "", nil, ErrNoCandidates
 	}
 
@@ -182,9 +183,9 @@ func (m Model) SelectCurrent() (string, tea.Cmd, error) {
 		}
 	}
 
-	return m.state.selectCurrent(), cmd, nil
+	return m.state.SelectCurrent(), cmd, nil
 }
 
 func (m Model) HasCandidates() bool {
-	return m.state != nil && len(m.state.candidates) > 0
+	return m.state != nil
 }

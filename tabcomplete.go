@@ -10,68 +10,114 @@ type TabError struct {
 	Err   error
 }
 
-// TODO(ANR): Do we need to also tag the state w/ an Id?
-type tabCompleteState struct {
-	candidates      []string
-	displayView     []string
-	candidateCursor int
-	displayCursor   int
+type Candidate struct {
+	value   string
+	current bool
 }
 
-func newTabState(maxCandidatesToDisplay int, candidates []string) *tabCompleteState {
-	ts := &tabCompleteState{
-		candidates: candidates,
-	}
-
-	ts.createDisplayList(maxCandidatesToDisplay)
-	return ts
+func (c Candidate) String() string {
+	return c.value
 }
 
-func (s *tabCompleteState) createDisplayList(maxCandidatesToDisplay int) {
-	if maxCandidatesToDisplay > len(s.candidates) {
-		s.displayView = s.candidates
-		return
-	}
-
-	s.displayView = s.candidates[0:maxCandidatesToDisplay]
+func (c Candidate) Current() bool {
+	return c.current
 }
 
-func (s *tabCompleteState) moveNext() {
-	if s.candidateCursor >= len(s.candidates)-1 {
-		return
+type CandidateNavigator interface {
+	CurrentDisplay() []Candidate
+	MoveCursorNext()
+	MoveCursorPrev()
+	SelectCurrent() string
+}
+
+type pagedCandidateNavigator struct {
+	allCandidates          []string
+	totalPages             int
+	currentPage            int
+	maxCandidatesToDisplay int
+	displayCursorIndex     int
+}
+
+func newPagedCandidateNavigator(maxCandidatesToDisplay int, allCandidates []string) *pagedCandidateNavigator {
+	pcn := &pagedCandidateNavigator{
+		allCandidates:          allCandidates,
+		maxCandidatesToDisplay: maxCandidatesToDisplay,
+		totalPages:             calcTotalPages(maxCandidatesToDisplay, len(allCandidates)),
 	}
 
-	s.candidateCursor++
-	s.displayCursor++
+	return pcn
+}
 
-	// rolled off edge, but we know there's at least one more element after
-	if s.displayCursor >= len(s.displayView) {
-		s.displayCursor = len(s.displayView) - 1
-		s.displayView = append(
-			s.displayView[1:],
-			s.candidates[s.candidateCursor],
-		)
+func (p pagedCandidateNavigator) CurrentDisplay() []Candidate {
+	leftIndex := max(0, p.maxCandidatesToDisplay*p.currentPage)
+	rightIndex := min(len(p.allCandidates), p.maxCandidatesToDisplay*(p.currentPage+1))
+
+	displayView := p.allCandidates[leftIndex:rightIndex]
+	candidates := make([]Candidate, len(displayView))
+
+	for i, entry := range displayView {
+		candidates[i] = Candidate{
+			value:   entry,
+			current: i == p.displayCursorIndex,
+		}
+	}
+
+	return candidates
+
+}
+
+func (p *pagedCandidateNavigator) MoveCursorNext() {
+	leftIndex := max(0, p.maxCandidatesToDisplay*p.currentPage)
+	rightIndex := min(len(p.allCandidates), p.maxCandidatesToDisplay*(p.currentPage+1))
+
+	pageSize := rightIndex - leftIndex
+
+	if p.displayCursorIndex+1 < pageSize {
+		p.displayCursorIndex++
+	} else if p.currentPage+1 < p.totalPages {
+		p.currentPage++
+		p.displayCursorIndex = 0
 	}
 }
 
-func (s *tabCompleteState) movePrev() {
-	if s.candidateCursor == 0 {
-		return
-	}
-
-	s.candidateCursor--
-	s.displayCursor--
-
-	// rolled off edge of display
-	if s.displayCursor < 0 {
-		s.displayCursor = 0
-		s.displayView = append(
-			[]string{s.candidates[s.candidateCursor]},
-			s.displayView[:len(s.displayView)-1]...,
-		)
+func (p *pagedCandidateNavigator) MoveCursorPrev() {
+	if p.displayCursorIndex > 0 {
+		p.displayCursorIndex--
+	} else if p.currentPage > 0 {
+		p.currentPage--
+		leftIndex := max(0, p.maxCandidatesToDisplay*p.currentPage)
+		rightIndex := min(len(p.allCandidates), p.maxCandidatesToDisplay*(p.currentPage+1))
+		pageSize := rightIndex - leftIndex
+		p.displayCursorIndex = pageSize - 1
 	}
 }
 
-func (s *tabCompleteState) selectCurrent() string {
-	return s.candidates[s.candidateCursor]
+func (p pagedCandidateNavigator) SelectCurrent() string {
+	currentIndex := p.displayCursorIndex + (p.maxCandidatesToDisplay * p.currentPage)
+	clamped := max(0, min(len(p.allCandidates), currentIndex))
+	return p.allCandidates[clamped]
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func calcTotalPages(perPage, totalLen int) int {
+	pages := totalLen / perPage
+	if totalLen%perPage > 0 {
+		pages++
+	}
+
+	return pages
 }

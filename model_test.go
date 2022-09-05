@@ -224,6 +224,55 @@ func TestPagesThroughCompletedCandidates(t *testing.T) {
 	require.Equal(t, expectedDisplay.String(), model.View())
 }
 
+func TestShowsEachPageOfResults(t *testing.T) {
+	perPage := 4
+	completer := &TestTabCompleter{
+		Entries: []string{
+			"In The Way", "The Future Says Thank You", "They Fear Us", "Camera Eats First",
+			"Cremation Party", "Number Five", "Fluorescent", "You Should Have Gone Back",
+			"Hold, Be Held",
+		},
+	}
+
+	sep := " "
+
+	blurredStyle := lipgloss.NewStyle().Strikethrough(true)
+	focusedStyle := lipgloss.NewStyle()
+
+	model, err := NewTabCompleter(
+		UseCompleter(completer),
+		WithSeparator(sep, lipgloss.NewStyle()),
+		FocusedStyle(focusedStyle),
+		BlurredStyle(blurredStyle),
+		MaxCandidatesToDisplay(perPage),
+	)
+
+	require.Nil(t, err)
+	model = model.setCompleteUsing(ARBITRARY_VALUE)
+
+	pages := [][]string{
+		{"In The Way", "The Future Says Thank You", "They Fear Us", "Camera Eats First"},
+		{"Cremation Party", "Number Five", "Fluorescent", "You Should Have Gone Back"},
+		{"Hold, Be Held"},
+	}
+
+	for _, page := range pages {
+		for i := range page {
+			expectedDisplay := DisplayViewHelper{
+				Expected:     page,
+				FocusedIndex: i,
+				Separator:    sep,
+				FocusedStyle: focusedStyle,
+				BlurredStyle: blurredStyle,
+			}
+
+			require.Equal(t, expectedDisplay.String(), model.View())
+			model = model.moveNextN(1)
+		}
+	}
+
+}
+
 func (m Model) setClear() Model {
 	m, _ = m.Update(m.Clear()())
 	return m
