@@ -39,14 +39,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.KeyEnter.String():
 			if m.tc.HasCandidates() {
-				candidate, cmd, err := m.tc.SelectCurrent()
+				candidate, err := m.tc.SelectCurrent()
 				if err != nil {
 					return m, nil
 				}
 
 				m.input.SetValue(m.tc.JoinCandidate(m.input.Value(), candidate))
 				m.input.CursorEnd()
-				return m, cmd
+				return m, m.tc.Clear()
 			}
 		case tea.KeyEsc.String():
 			return m, m.tc.Clear()
@@ -86,7 +86,7 @@ func (m model) View() string {
 
 func main() {
 	tc, err := tabcomplete.NewTabCompleter(
-		tabcomplete.UseFileSystemCompleter(tabcomplete.IncludeHiddenFiles),
+		tabcomplete.UseFileSystemCompleter(),
 		tabcomplete.MaxCandidatesToDisplay(10),
 		tabcomplete.WithSeparator(" | ", lipgloss.NewStyle()),
 		tabcomplete.BlurredStyle(lipgloss.NewStyle()),

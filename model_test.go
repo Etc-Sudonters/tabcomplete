@@ -81,12 +81,10 @@ func TestModel_Highlights_CurrentElement(t *testing.T) {
 	sep := "|"
 
 	blurredStyle := lipgloss.NewStyle().Strikethrough(true)
-	focusedStyle := lipgloss.NewStyle()
 
 	model, err := NewTabCompleter(
 		UseCompleter(completer),
 		WithSeparator(sep, lipgloss.NewStyle()),
-		FocusedStyle(focusedStyle),
 		BlurredStyle(blurredStyle),
 	)
 
@@ -97,7 +95,6 @@ func TestModel_Highlights_CurrentElement(t *testing.T) {
 	expectedDisplay := &DisplayViewHelper{
 		Expected:     completer.Entries,
 		FocusedIndex: 0,
-		FocusedStyle: focusedStyle,
 		BlurredStyle: blurredStyle,
 		Separator:    sep,
 	}
@@ -113,12 +110,10 @@ func TestModel_MovesNextThrough_SelectionList(t *testing.T) {
 	sep := "|"
 
 	blurredStyle := lipgloss.NewStyle().Strikethrough(true)
-	focusedStyle := lipgloss.NewStyle()
 
 	model, err := NewTabCompleter(
 		UseCompleter(completer),
 		WithSeparator(sep, lipgloss.NewStyle()),
-		FocusedStyle(focusedStyle),
 		BlurredStyle(blurredStyle),
 		MaxCandidatesToDisplay(3),
 	)
@@ -136,7 +131,6 @@ func TestModel_MovesNextThrough_SelectionList(t *testing.T) {
 				Expected:     completer.Entries,
 				Separator:    sep,
 				FocusedIndex: n,
-				FocusedStyle: focusedStyle,
 				BlurredStyle: blurredStyle,
 			}
 			require.Equal(t, expectedDisplay.String(), m.View())
@@ -153,12 +147,10 @@ func TestModel_MovesPrevThrough_SelectionList(t *testing.T) {
 	sep := "|"
 
 	blurredStyle := lipgloss.NewStyle().Strikethrough(true)
-	focusedStyle := lipgloss.NewStyle()
 
 	model, err := NewTabCompleter(
 		UseCompleter(completer),
 		WithSeparator(sep, lipgloss.NewStyle()),
-		FocusedStyle(focusedStyle),
 		BlurredStyle(blurredStyle),
 		MaxCandidatesToDisplay(len(completer.Entries)),
 	)
@@ -178,7 +170,6 @@ func TestModel_MovesPrevThrough_SelectionList(t *testing.T) {
 				Separator:    sep,
 				FocusedIndex: expectedIndex,
 				BlurredStyle: blurredStyle,
-				FocusedStyle: focusedStyle,
 			}
 
 			require.Equal(t, expectedDisplay.String(), m.View())
@@ -199,12 +190,10 @@ func TestPagesThroughCompletedCandidates(t *testing.T) {
 	sep := " "
 
 	blurredStyle := lipgloss.NewStyle().Strikethrough(true)
-	focusedStyle := lipgloss.NewStyle()
 
 	model, err := NewTabCompleter(
 		UseCompleter(completer),
 		WithSeparator(sep, lipgloss.NewStyle()),
-		FocusedStyle(focusedStyle),
 		BlurredStyle(blurredStyle),
 		MaxCandidatesToDisplay(3),
 	)
@@ -217,7 +206,6 @@ func TestPagesThroughCompletedCandidates(t *testing.T) {
 		Expected:     []string{"Theta", "Untitled", "Frequency"},
 		FocusedIndex: 2,
 		Separator:    sep,
-		FocusedStyle: focusedStyle,
 		BlurredStyle: blurredStyle,
 	}
 
@@ -237,12 +225,10 @@ func TestShowsEachPageOfResults(t *testing.T) {
 	sep := " "
 
 	blurredStyle := lipgloss.NewStyle().Strikethrough(true)
-	focusedStyle := lipgloss.NewStyle()
 
 	model, err := NewTabCompleter(
 		UseCompleter(completer),
 		WithSeparator(sep, lipgloss.NewStyle()),
-		FocusedStyle(focusedStyle),
 		BlurredStyle(blurredStyle),
 		MaxCandidatesToDisplay(perPage),
 	)
@@ -262,7 +248,6 @@ func TestShowsEachPageOfResults(t *testing.T) {
 				Expected:     page,
 				FocusedIndex: i,
 				Separator:    sep,
-				FocusedStyle: focusedStyle,
 				BlurredStyle: blurredStyle,
 			}
 
@@ -270,7 +255,116 @@ func TestShowsEachPageOfResults(t *testing.T) {
 			model = model.moveNextN(1)
 		}
 	}
+}
 
+func TestModel_CanSelectEachCandidateFromList(t *testing.T) {
+	candidates := []string{
+		"Oh What The Future Holds", "Pandora", "Far from Heaven",
+		"In Shadows", "Two Towers", "A Higher Level of Hate",
+		"Collateral Damage", "Savages", "Conditional Healing",
+		"The Man That I Was Not",
+	}
+	sep := " "
+	perPage := 3
+	blurredStyle := lipgloss.NewStyle().Strikethrough(true)
+
+	model, err := NewTabCompleter(
+		UseCompleter(&TestTabCompleter{
+			Entries: candidates,
+		}),
+		WithSeparator(sep, lipgloss.NewStyle()),
+		BlurredStyle(blurredStyle),
+		MaxCandidatesToDisplay(perPage),
+	)
+
+	require.Nil(t, err)
+
+	model = model.setCompleteUsing(ARBITRARY_VALUE)
+
+	for _, expectedCandidate := range candidates {
+		actualCandidate, _ := model.SelectCurrent()
+		require.Equal(t, expectedCandidate, actualCandidate)
+		model = model.moveNextN(1)
+	}
+}
+
+func TestModel_EmptyDisplay_WithNoCandidates(t *testing.T) {
+	model, err := NewTabCompleter(
+		UseCompleter(&TestTabCompleter{}),
+		WithSeparator(" ", lipgloss.NewStyle()),
+		MaxCandidatesToDisplay(3),
+	)
+
+	require.Nil(t, err)
+
+	model = model.setCompleteUsing(ARBITRARY_VALUE)
+
+	require.Equal(t, EMPTY_DISPLAY, model.View())
+}
+
+func TestModel_NoCurrentToSelect_WithNoCandidates(t *testing.T) {
+	model, err := NewTabCompleter(
+		UseCompleter(&TestTabCompleter{}),
+		WithSeparator(" ", lipgloss.NewStyle()),
+		MaxCandidatesToDisplay(3),
+	)
+
+	require.Nil(t, err)
+
+	model = model.setCompleteUsing(ARBITRARY_VALUE)
+
+	actualSelected, err := model.SelectCurrent()
+
+	require.NotNil(t, err)
+	require.ErrorIs(t, err, ErrNoCandidates)
+	require.Equal(t, "", actualSelected)
+}
+
+func TestModel_SuccessfulCompleteClearsError(t *testing.T) {
+	candidates := []string{
+		"some", "results", "cool",
+	}
+
+	model, err := NewTabCompleter(UseCompleter(&TestTabCompleter{
+		Entries: candidates,
+	}),
+	)
+
+	require.Nil(t, err)
+	model.Error = &TabError{
+		Input: ARBITRARY_VALUE,
+		Err:   ErrNoCandidates,
+	}
+
+	model = model.setCompleteUsing(ARBITRARY_VALUE)
+
+	require.Nil(t, model.Error)
+}
+
+func TestModel_ErrorResult_ClearsCompletion(t *testing.T) {
+	completer := &TestTabCompleter{
+		Error: ErrCouldNotExpandHome,
+	}
+
+	model, err := NewTabCompleter(UseCompleter(completer))
+	require.Nil(t, err)
+
+	model = model.setCompleteUsing(ARBITRARY_VALUE)
+	require.NotNil(t, model.Error)
+	require.Equal(t, EMPTY_DISPLAY, model.View())
+
+	candidates := []string{"dennis", "arthur", "lancelot"}
+	completer.Entries = candidates
+	completer.Error = nil
+	model = model.setCompleteUsing(ARBITRARY_VALUE)
+
+	require.Nil(t, model.Error)
+	expectedDisplay := DisplayViewHelper{
+		Expected:     candidates,
+		FocusedIndex: 0,
+		Separator:    " ",
+	}
+	require.Equal(t, expectedDisplay.String(), model.View())
 }
 
 func (m Model) setClear() Model {

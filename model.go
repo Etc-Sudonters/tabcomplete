@@ -76,8 +76,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.state = nil
 			m.Error = nil
 		case completed:
-			m.state = newPagedCandidateNavigator(m.maxCandidatesToDisplay, msg.candidates)
 			m.Error = nil
+			if len(msg.candidates) > 0 {
+				m.state = newPagedCandidateNavigator(m.maxCandidatesToDisplay, msg.candidates)
+			}
 		case tabErr:
 			m.state = nil
 			m.Error = &TabError{
@@ -171,19 +173,12 @@ func (m Model) MovePrev() tea.Cmd {
 	}
 }
 
-func (m Model) SelectCurrent() (string, tea.Cmd, error) {
+func (m Model) SelectCurrent() (string, error) {
 	if m.state == nil {
-		return "", nil, ErrNoCandidates
+		return "", ErrNoCandidates
 	}
 
-	cmd := func() tea.Msg {
-		return Message{
-			kind: clear{},
-			id:   m.id,
-		}
-	}
-
-	return m.state.SelectCurrent(), cmd, nil
+	return m.state.SelectCurrent(), nil
 }
 
 func (m Model) HasCandidates() bool {
