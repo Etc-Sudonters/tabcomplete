@@ -1,9 +1,5 @@
 package tabcomplete
 
-import (
-	"fmt"
-)
-
 type TabCompletion interface {
 	Complete(string) ([]string, error)
 	Join(string, string) string
@@ -16,16 +12,14 @@ type TabError struct {
 
 // TODO(ANR): Do we need to also tag the state w/ an Id?
 type tabCompleteState struct {
-	initial         string
 	candidates      []string
 	displayView     []string
 	candidateCursor int
 	displayCursor   int
 }
 
-func newTabState(maxCandidatesToDisplay int, initial string, candidates []string) *tabCompleteState {
+func newTabState(maxCandidatesToDisplay int, candidates []string) *tabCompleteState {
 	ts := &tabCompleteState{
-		initial:    initial,
 		candidates: candidates,
 	}
 
@@ -79,8 +73,5 @@ func (s *tabCompleteState) movePrev() {
 }
 
 func (s *tabCompleteState) selectCurrent() string {
-	if len(s.candidates) == 0 {
-		panic(fmt.Sprintf("TabState was present with initial of %s but no candidates (how?)", s.initial))
-	}
 	return s.candidates[s.candidateCursor]
 }

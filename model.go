@@ -65,7 +65,6 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	var cmd tea.Cmd = nil
 	if msg, ok := msg.(Message); ok {
 
 		if msg.id != m.id {
@@ -77,7 +76,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.state = nil
 			m.Error = nil
 		case completed:
-			m.state = newTabState(m.maxCandidatesToDisplay, msg.input, msg.candidates)
+			m.state = newTabState(m.maxCandidatesToDisplay, msg.candidates)
 			m.Error = nil
 		case tabErr:
 			m.state = nil
@@ -96,7 +95,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 	}
 
-	return m, cmd
+	return m, nil
 }
 
 func (m Model) View() string {
@@ -133,7 +132,6 @@ func (m Model) Complete(input string) tea.Cmd {
 
 		return Message{
 			kind: completed{
-				input:      input,
 				candidates: candidates,
 			},
 			id: m.id,

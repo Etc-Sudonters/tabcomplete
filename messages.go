@@ -6,7 +6,6 @@ type Message struct {
 }
 
 type completed struct {
-	input      string
 	candidates []string
 }
 

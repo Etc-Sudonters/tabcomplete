@@ -12,26 +12,42 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-type IncludeHidden bool
-
-const (
-	IncludeHiddenFiles IncludeHidden = true
-	ExcludeHiddenFiles IncludeHidden = false
+var (
+	ErrCannotGetWorkingDirectory = errors.New("cannot get working directory")
+	ErrCouldNotExpandPath        = errors.New("could not expand path")
+	ErrCouldNotExpandHome        = errors.New("could not expand home directory")
+	ErrCouldNotNormalizePath     = errors.New("could not normalize path")
+	ErrCouldNotReadDir           = errors.New("could not read directory")
 )
 
-func UseFileSystemCompleter(includeHidden IncludeHidden) ConfigureModel {
-	return UseCompleter(NewFileSystemTabCompletion(bool(includeHidden)))
+type FileSystemError struct {
+	reason error
+	err    error
+}
+
+func (f FileSystemError) Is(target error) bool {
+	return errors.Is(f.reason, target)
+}
+
+func (f FileSystemError) Error() string {
+	return fmt.Sprintf("%s: %s", f.reason, f.err.Error())
+}
+
+func (f FileSystemError) Unwrap() error {
+	return f.err
+}
+
+func UseFileSystemCompleter() ConfigureModel {
+	return UseCompleter(NewFileSystemTabCompletion())
 }
 
 type FileSystemTabCompletion struct {
-	pathSep       string
-	IncludeHidden bool
+	pathSep string
 }
 
-func NewFileSystemTabCompletion(includeHidden bool) FileSystemTabCompletion {
+func NewFileSystemTabCompletion() FileSystemTabCompletion {
 	return FileSystemTabCompletion{
-		pathSep:       string(os.PathSeparator),
-		IncludeHidden: includeHidden,
+		pathSep: string(os.PathSeparator),
 	}
 }
 
@@ -52,25 +68,27 @@ func (fs FileSystemTabCompletion) Complete(input string) ([]string, error) {
 	if path == "" {
 		path, err = os.Getwd()
 		if err != nil {
-			return []string{}, err
+			return []string{}, FileSystemError{
+				reason: ErrCannotGetWorkingDirectory,
+				err:    err,
+			}
 		}
 	}
 
 	absPath, err := expandPath(path)
 	if err != nil {
-		return []string{}, fmt.Errorf("could not expand %s: %w", path, err)
+		return []string{}, err
 	}
 
-	dir, base, err := normalize(absPath)
-
-	if err != nil {
-		return []string{}, fmt.Errorf("could not normalize %s: %w", absPath, err)
-	}
+	dir, base := normalize(absPath)
 
 	entries, err := os.ReadDir(dir)
 
 	if err != nil {
-		return []string{}, fmt.Errorf("could not read %s: %w", dir, err)
+		return []string{}, FileSystemError{
+			reason: fmt.Errorf("%w: %s", ErrCouldNotReadDir, dir),
+			err:    err,
+		}
 	}
 
 	candidates := mapf(entries, func(d os.DirEntry) string {
@@ -95,53 +113,30 @@ func (fs FileSystemTabCompletion) Complete(input string) ([]string, error) {
 }
 
 func (fs FileSystemTabCompletion) Join(current, selected string) string {
-	if current == "" {
-		info, err := os.Stat(selected)
-		if err == nil && info.IsDir() {
-			return selected + fs.pathSep
-		}
-		return selected
-	}
-
-	expanded, err := expandPath(current)
-
-	if err != nil {
-		return filepath.Join(current, selected)
-	}
-
-	dir, _, err := normalize(expanded)
-
-	if err == nil {
-		current = dir
-	}
+	current, _ = normalize(current)
 
 	return filepath.Join(current, selected)
 }
 
-func normalize(path string) (string, string, error) {
+func normalize(path string) (dir string, base string) {
 	info, err := os.Stat(path)
 
 	if err == nil {
 		if !info.IsDir() {
-			return filepath.Dir(path), filepath.Base(path), nil
+			dir, base := filepath.Split(path)
+			return dir, base
 		}
 
-		return path, "", nil
+		return path, ""
 	}
 
-	if !errors.Is(err, os.ErrNotExist) {
-		return "", "", fmt.Errorf("could not stat %s: %w", path, err)
+	dir, base = filepath.Split(path)
+
+	if dir == "" && (base == "." || base == "~") {
+		return base, dir
 	}
 
-	dir, base := filepath.Split(path)
-
-	_, err = os.Stat(dir)
-
-	if err != nil {
-		return "", "", fmt.Errorf("could not stat %s: %w", dir, err)
-	}
-
-	return dir, base, nil
+	return dir, base
 }
 
 func expandPath(input string) (path string, err error) {
@@ -150,7 +145,10 @@ func expandPath(input string) (path string, err error) {
 	if string(input[0]) == "~" {
 		path, err = homedir.Expand(input)
 		if err != nil {
-			err = fmt.Errorf("bad expansion %w", err)
+			err = FileSystemError{
+				reason: ErrCouldNotExpandHome,
+				err:    err,
+			}
 			return
 		}
 	}
@@ -158,7 +156,10 @@ func expandPath(input string) (path string, err error) {
 	if !filepath.IsAbs(path) {
 		path, err = filepath.Abs(path)
 		if err != nil {
-			err = fmt.Errorf("bad expansion %w", err)
+			err = FileSystemError{
+				reason: fmt.Errorf("%w: %s", ErrCouldNotExpandPath, path),
+				err:    err,
+			}
 		}
 	}
 
